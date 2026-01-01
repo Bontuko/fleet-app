@@ -17,7 +17,6 @@ exports.list = async (req, res) => {
 exports.create = async (req, res) => {
   try {
     const { plate_no, model, status, fuel_level, odometer } = req.body;
-    const { plate_no, model, status, fuel_level, odometer } = req.body;
     const [inserted] = await db('vehicles').insert({
       plate_no,
       model,
@@ -27,8 +26,6 @@ exports.create = async (req, res) => {
       updated_at: db.fn.now()
     }).returning('*');
 
-    // Postgres .returning('*') gives us the row directly, no need for secondary fetch if supported.
-    // Knex with PG supports returning.
     getIO().emit('vehicle:created', inserted);
     res.status(201).json(inserted);
   } catch (err) {
@@ -42,8 +39,6 @@ exports.update = async (req, res) => {
   try {
     const { id } = req.params;
     const { status, fuel_level, odometer } = req.body;
-    const { id } = req.params;
-    const { status, fuel_level, odometer } = req.body;
 
     const [updated] = await db('vehicles')
       .where({ id })
@@ -55,8 +50,12 @@ exports.update = async (req, res) => {
       })
       .returning('*');
 
-    getIO().emit('vehicle:updated', updated);
-    res.json(updated);
+    if (updated) {
+      getIO().emit('vehicle:updated', updated);
+      res.json(updated);
+    } else {
+      res.status(404).json({ error: 'Vehicle not found' });
+    }
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to update vehicle' });
@@ -66,7 +65,6 @@ exports.update = async (req, res) => {
 // Delete vehicle
 exports.remove = async (req, res) => {
   try {
-    const { id } = req.params;
     const { id } = req.params;
     await db('vehicles').where({ id }).del();
     getIO().emit('vehicle:deleted', { id });
