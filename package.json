@@ -1,0 +1,16 @@
+{
+  "name": "fleet_root",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev --prefix fleet_backend\" \"npm run dev --prefix fleet_dashboard\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "jsonwebtoken": "^9.0.3",
+    "lucide-react": "^0.562.0",
+    "tailwindcss-animate": "^1.0.7"
+  }
+}
