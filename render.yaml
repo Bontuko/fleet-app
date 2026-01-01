@@ -5,7 +5,7 @@ services:
     runtime: node
     plan: free
     buildCommand: cd fleet_backend && npm install
-    startCommand: cd fleet_backend && npm start
+    startCommand: cd fleet_backend && npx knex migrate:latest && npx knex seed:run && npm start
     envVars:
       - key: DATABASE_URL
         fromDatabase:
