@@ -1,0 +1,8 @@
+# Ensure consistent line endings
+* text=auto eol=lf
+
+# Node-specific
+*.js     text eol=lf
+*.json   text eol=lf
+*.env    text eol=lf
+*.sql    text eol=lf
