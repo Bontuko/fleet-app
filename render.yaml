@@ -23,7 +23,6 @@ services:
   - type: web
     name: fleet-dashboard
     runtime: static
-    plan: free
     buildCommand: cd fleet_dashboard && npm install && npm run build
     staticPublishPath: fleet_dashboard/dist
     routes:
