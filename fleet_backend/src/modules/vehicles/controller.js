@@ -1,11 +1,11 @@
 // src/modules/vehicles/controller.js
-const { pool } = require('../../config/db');
+const { db } = require('../../config/db');
 const { getIO } = require('../../sockets');
 
 // List all vehicles
 exports.list = async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM vehicles ORDER BY updated_at DESC');
+    const rows = await db('vehicles').orderBy('updated_at', 'desc');
     res.json(rows);
   } catch (err) {
     console.error(err);
@@ -17,13 +17,20 @@ exports.list = async (req, res) => {
 exports.create = async (req, res) => {
   try {
     const { plate_no, model, status, fuel_level, odometer } = req.body;
-    const [result] = await pool.query(
-      'INSERT INTO vehicles (plate_no, model, status, fuel_level, odometer, updated_at) VALUES (?, ?, ?, ?, ?, NOW())',
-      [plate_no, model, status, fuel_level || 0, odometer || 0]
-    );
-    const [rows] = await pool.query('SELECT * FROM vehicles WHERE id = ?', [result.insertId]);
-    getIO().emit('vehicle:created', rows[0]);
-    res.status(201).json(rows[0]);
+    const { plate_no, model, status, fuel_level, odometer } = req.body;
+    const [inserted] = await db('vehicles').insert({
+      plate_no,
+      model,
+      status,
+      fuel_level: fuel_level || 0,
+      odometer: odometer || 0,
+      updated_at: db.fn.now()
+    }).returning('*');
+
+    // Postgres .returning('*') gives us the row directly, no need for secondary fetch if supported.
+    // Knex with PG supports returning.
+    getIO().emit('vehicle:created', inserted);
+    res.status(201).json(inserted);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to create vehicle' });
@@ -35,13 +42,21 @@ exports.update = async (req, res) => {
   try {
     const { id } = req.params;
     const { status, fuel_level, odometer } = req.body;
-    await pool.query(
-      'UPDATE vehicles SET status = ?, fuel_level = ?, odometer = ?, updated_at = NOW() WHERE id = ?',
-      [status, fuel_level, odometer, id]
-    );
-    const [rows] = await pool.query('SELECT * FROM vehicles WHERE id = ?', [id]);
-    getIO().emit('vehicle:updated', rows[0]);
-    res.json(rows[0]);
+    const { id } = req.params;
+    const { status, fuel_level, odometer } = req.body;
+
+    const [updated] = await db('vehicles')
+      .where({ id })
+      .update({
+        status,
+        fuel_level,
+        odometer,
+        updated_at: db.fn.now()
+      })
+      .returning('*');
+
+    getIO().emit('vehicle:updated', updated);
+    res.json(updated);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to update vehicle' });
@@ -52,7 +67,8 @@ exports.update = async (req, res) => {
 exports.remove = async (req, res) => {
   try {
     const { id } = req.params;
-    await pool.query('DELETE FROM vehicles WHERE id = ?', [id]);
+    const { id } = req.params;
+    await db('vehicles').where({ id }).del();
     getIO().emit('vehicle:deleted', { id });
     res.json({ success: true });
   } catch (err) {

@@ -1,4 +1,4 @@
-const { pool } = require('../../config/db');
+const { db } = require('../../config/db');
 const { getIO } = require('../../sockets');
 
 /**
@@ -8,19 +8,13 @@ const { getIO } = require('../../sockets');
  */
 exports.list = async (req, res) => {
   try {
-    let rows;
+    let query = db('commands').orderBy('created_at', 'desc');
 
-    if (req.user.role === 'admin') {
-      [rows] = await pool.query(
-        'SELECT * FROM commands ORDER BY created_at DESC'
-      );
-    } else {
-      [rows] = await pool.query(
-        'SELECT * FROM commands WHERE requester_name = ? ORDER BY created_at DESC',
-        [req.user.username]
-      );
+    if (req.user.role !== 'admin') {
+      query = query.where('requester_name', req.user.username);
     }
 
+    const rows = await query;
     res.json(rows);
   } catch (err) {
     console.error('Fetch commands failed:', err);
@@ -39,20 +33,15 @@ exports.create = async (req, res) => {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    const [result] = await pool.query(
-      `INSERT INTO commands (requester_name, message, status, created_at)
-       VALUES (?, ?, 'queued', NOW())`,
-      [req.user.username, message]
-    );
-
-    const [[command]] = await pool.query(
-      'SELECT * FROM commands WHERE id = ?',
-      [result.insertId]
-    );
+    const [command] = await db('commands').insert({
+      requester_name: req.user.username,
+      message,
+      status: 'queued',
+      created_at: db.fn.now()
+    }).returning('*');
 
     // realtime update
     getIO().emit('command:received', command);
-
     res.status(201).json(command);
   } catch (err) {
     console.error('Create command failed:', err);
@@ -72,23 +61,21 @@ exports.reply = async (req, res) => {
       return res.status(400).json({ error: 'Response is required' });
     }
 
-    // update command
-    await pool.query(
-      `UPDATE commands
-       SET response = ?, status = 'responded'
-       WHERE id = ?`,
-      [response, id]
-    );
+    const [updated] = await db('commands')
+      .where({ id })
+      .update({
+        response,
+        status: 'responded'
+      })
+      .returning('*');
 
-    const [[updated]] = await pool.query(
-      'SELECT * FROM commands WHERE id = ?',
-      [id]
-    );
-
-    // realtime update to admin + user
-    getIO().emit('command:updated', updated);
-
-    res.json(updated);
+    if (updated) {
+      // realtime update to admin + user
+      getIO().emit('command:updated', updated);
+      res.json(updated);
+    } else {
+      res.status(404).json({ error: 'Command not found' });
+    }
   } catch (err) {
     console.error('Reply failed:', err);
     res.status(500).json({ error: 'Failed to reply to command' });

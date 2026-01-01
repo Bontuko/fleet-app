@@ -1,27 +1,27 @@
-const { pool } = require('../../config/db');
+const { db } = require('../../config/db');
 
 exports.getStats = async (req, res) => {
   try {
-    const [[vehicles]] = await pool.query('SELECT COUNT(*) AS total FROM vehicles');
-    const [[active]] = await pool.query("SELECT COUNT(*) AS active FROM vehicles WHERE status = 'active'");
-    const [[maintenance]] = await pool.query("SELECT COUNT(*) AS maintenance FROM vehicles WHERE status = 'maintenance'");
+    // Knex counts return an array of objects like [{ count: '5' }]
+    const [vehicles] = await db('vehicles').count('* as total');
+    const [active] = await db('vehicles').where('status', 'active').count('* as active');
+    const [maintenance] = await db('vehicles').where('status', 'maintenance').count('* as maintenance');
 
     let commandsQuery;
     if (req.user.role === 'admin') {
-      [commandsQuery] = await pool.query("SELECT COUNT(*) AS queued FROM commands WHERE status = 'queued'");
+      [commandsQuery] = await db('commands').where('status', 'queued').count('* as queued');
     } else {
-      [commandsQuery] = await pool.query(
-        "SELECT COUNT(*) AS queued FROM commands WHERE status = 'queued' AND requester_name = ?",
-        [req.user.username]
-      );
+      [commandsQuery] = await db('commands')
+        .where('status', 'queued')
+        .andWhere('requester_name', req.user.username)
+        .count('* as queued');
     }
-    const commands = commandsQuery[0];
 
     res.json({
-      totalVehicles: vehicles.total,
-      activeVehicles: active.active,
-      maintenance: maintenance.maintenance,
-      queuedCommands: commands.queued,
+      totalVehicles: parseInt(vehicles.total || 0),
+      activeVehicles: parseInt(active.active || 0),
+      maintenance: parseInt(maintenance.maintenance || 0),
+      queuedCommands: parseInt(commandsQuery.queued || 0),
     });
   } catch (err) {
     console.error(err);

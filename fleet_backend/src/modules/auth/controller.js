@@ -1,4 +1,4 @@
-const { pool } = require('../../config/db');
+const { db } = require('../../config/db');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
@@ -7,17 +7,20 @@ exports.register = async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
-    const [exists] = await pool.query(
-      'SELECT id FROM users WHERE username = ? OR email = ?',
-      [username, email]
-    );
-    if (exists.length) return res.status(400).json({ error: 'User exists' });
+    const exists = await db('users')
+      .where('username', username)
+      .orWhere('email', email)
+      .first();
+
+    if (exists) return res.status(400).json({ error: 'User exists' });
 
     const hash = await bcrypt.hash(password, 10);
-    await pool.query(
-      'INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)',
-      [username, email, hash, 'user']
-    );
+    await db('users').insert({
+      username,
+      email,
+      password_hash: hash,
+      role: 'user'
+    });
 
     res.status(201).json({ success: true });
   } catch (err) {
@@ -30,11 +33,10 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
   try {
     const { username, password } = req.body;
-    const [rows] = await pool.query('SELECT * FROM users WHERE username = ?', [username]);
+    const user = await db('users').where('username', username).first();
 
-    if (!rows.length) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const user = rows[0];
     const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
 
@@ -57,24 +59,13 @@ exports.login = async (req, res) => {
 exports.updateProfile = async (req, res) => {
   try {
     const { username, password } = req.body;
-    const fields = [];
-    const values = [];
+    const updates = {};
+    if (username) updates.username = username;
+    if (password) updates.password_hash = await bcrypt.hash(password, 10);
 
-    if (username) {
-      fields.push('username = ?');
-      values.push(username);
+    if (Object.keys(updates).length > 0) {
+      await db('users').where({ id: req.user.id }).update(updates);
     }
-    if (password) {
-      fields.push('password_hash = ?');
-      values.push(await bcrypt.hash(password, 10));
-    }
-    if (!fields.length) return res.json({ success: true });
-
-    values.push(req.user.id); // from authMiddleware
-    await pool.query(
-      `UPDATE users SET ${fields.join(', ')} WHERE id = ?`,
-      values
-    );
 
     res.json({ success: true });
   } catch (err) {
@@ -86,7 +77,9 @@ exports.updateProfile = async (req, res) => {
 // List all users (for admin dropdown when sending commands)
 exports.listUsers = async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT id, username, email, role FROM users ORDER BY username');
+    const rows = await db('users')
+      .select('id', 'username', 'email', 'role')
+      .orderBy('username');
     res.json(rows);
   } catch (err) {
     console.error('Fetch users error:', err);
